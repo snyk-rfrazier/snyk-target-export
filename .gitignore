@@ -1,0 +1,19 @@
+# Binary
+snyk-refresh
+snyk-refresh.exe
+
+# GoReleaser
+dist/
+
+# Output files
+refresh-import-targets.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
