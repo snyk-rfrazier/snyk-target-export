@@ -2,6 +2,7 @@ package internal
 
 import (
 	"net/http"
+	"os"
 	"testing"
 	"time"
 )
@@ -72,5 +73,83 @@ func TestCalculateBackoff(t *testing.T) {
 	// attempt 5 -> 32s, capped to 30s
 	if d := calculateBackoff(5, cfg); d != 30*time.Second {
 		t.Errorf("attempt 5: got %v, want 30s (capped)", d)
+	}
+}
+
+func TestGetSnykAPIBaseURL(t *testing.T) {
+	save := func() (snykAPI, snykAPIURL string) {
+		return os.Getenv("SNYK_API"), os.Getenv("SNYK_API_URL")
+	}
+	restore := func(snykAPI, snykAPIURL string) {
+		if snykAPI != "" {
+			os.Setenv("SNYK_API", snykAPI)
+		} else {
+			os.Unsetenv("SNYK_API")
+		}
+		if snykAPIURL != "" {
+			os.Setenv("SNYK_API_URL", snykAPIURL)
+		} else {
+			os.Unsetenv("SNYK_API_URL")
+		}
+	}
+	defer restore(save())
+
+	// Default
+	os.Unsetenv("SNYK_API")
+	os.Unsetenv("SNYK_API_URL")
+	if u := GetSnykAPIBaseURL(); u != "https://api.snyk.io" {
+		t.Errorf("default: got %q", u)
+	}
+
+	// SNYK_API takes precedence
+	os.Setenv("SNYK_API", "https://api.eu.snyk.io")
+	os.Setenv("SNYK_API_URL", "https://other.example.com")
+	if u := GetSnykAPIBaseURL(); u != "https://api.eu.snyk.io" {
+		t.Errorf("SNYK_API: got %q", u)
+	}
+
+	// SNYK_API_URL when SNYK_API not set
+	os.Unsetenv("SNYK_API")
+	os.Setenv("SNYK_API_URL", "https://custom.example.com/")
+	if u := GetSnykAPIBaseURL(); u != "https://custom.example.com" {
+		t.Errorf("SNYK_API_URL: got %q (trailing slash should be trimmed)", u)
+	}
+}
+
+func TestGetSnykToken(t *testing.T) {
+	saveSNYK := os.Getenv("SNYK_TOKEN")
+	saveAPI := os.Getenv("SNYK_API_TOKEN")
+	defer func() {
+		if saveSNYK != "" {
+			os.Setenv("SNYK_TOKEN", saveSNYK)
+		} else {
+			os.Unsetenv("SNYK_TOKEN")
+		}
+		if saveAPI != "" {
+			os.Setenv("SNYK_API_TOKEN", saveAPI)
+		} else {
+			os.Unsetenv("SNYK_API_TOKEN")
+		}
+	}()
+
+	// Both unset -> error
+	os.Unsetenv("SNYK_TOKEN")
+	os.Unsetenv("SNYK_API_TOKEN")
+	if _, err := GetSnykToken(); err == nil {
+		t.Error("expected error when both env vars unset")
+	}
+
+	// SNYK_TOKEN set
+	os.Setenv("SNYK_TOKEN", "secret123")
+	os.Unsetenv("SNYK_API_TOKEN")
+	if tok, err := GetSnykToken(); err != nil || tok != "secret123" {
+		t.Errorf("got %q, %v", tok, err)
+	}
+
+	// SNYK_API_TOKEN used when SNYK_TOKEN unset
+	os.Unsetenv("SNYK_TOKEN")
+	os.Setenv("SNYK_API_TOKEN", "api-secret")
+	if tok, err := GetSnykToken(); err != nil || tok != "api-secret" {
+		t.Errorf("got %q, %v", tok, err)
 	}
 }
