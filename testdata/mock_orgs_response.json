@@ -1,0 +1,28 @@
+{
+  "id": "a0000001-0001-4000-8000-000000000001",
+  "name": "Example Group",
+  "url": "https://app.snyk.io/group/a0000001-0001-4000-8000-000000000001",
+  "orgs": [
+    {
+      "id": "a0000001-0001-4000-8000-000000000001",
+      "name": "Example Org",
+      "slug": "example-org",
+      "url": "https://app.snyk.io/org/example-org",
+      "created": "2024-01-15T12:00:00.000Z"
+    },
+    {
+      "id": "a0000002-0002-4000-8000-000000000002",
+      "name": "Test Org Two",
+      "slug": "test-org-two",
+      "url": "https://app.snyk.io/org/test-org-two",
+      "created": "2024-02-20T10:00:00.000Z"
+    },
+    {
+      "id": "a0000003-0003-4000-8000-000000000003",
+      "name": "Mock Org",
+      "slug": "mock-org",
+      "url": "https://app.snyk.io/org/mock-org",
+      "created": "2024-03-10T08:00:00.000Z"
+    }
+  ]
+}

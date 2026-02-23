@@ -2,16 +2,25 @@
 
 Generate an import targets file from your existing Snyk projects so you can re-import them with [snyk-api-import](https://github.com/snyk/snyk-api-import). This is useful when you need to add a new Snyk product (e.g. SCA) to projects that were originally imported for a different product (e.g. Snyk Code).
 
-`snyk-target-export` scans all organizations in a Snyk group, discovers every SCM target that already exists, and writes a `export-targets.json` file. You then feed that file to `snyk-api-import import` to trigger the re-import.
+`snyk-target-export` scans organizations in a Snyk group (or a single org), discovers every SCM target that already exists, and writes an `export-targets.json` file. You then feed that file to `snyk-api-import import` to trigger the re-import.
 
 No SCM credentials are required. The tool only communicates with Snyk APIs using your `SNYK_TOKEN`.
+
+## Commands overview
+
+| Command | Description | Example |
+|--------|-------------|--------|
+| **refresh** (default) | Export all SCM targets to a JSON file for re-import | `./snyk-target-export --groupId=<group-id>` |
+| **dedup** | Find and optionally remove duplicate projects | `./snyk-target-export dedup --groupId=<group-id>` |
+
+You must set `SNYK_TOKEN` (or `SNYK_API_TOKEN`) before running any command. For refresh you must pass either `--groupId` or `--orgId`; for dedup the same applies.
 
 ## Quick Start
 
 ```bash
 export SNYK_TOKEN=<your-snyk-api-token>
 
-# 1. Generate the import targets file
+# 1. Generate the import targets file (refresh is the default command)
 ./snyk-target-export --groupId=<your-group-id>
 
 # 2. Review the output
@@ -54,47 +63,21 @@ The `Makefile` includes several useful targets:
 
 ## Usage
 
-### Scan all organizations in a group
+### Refresh command (default): export targets
 
-```bash
-./snyk-target-export --groupId=<your-group-id>
-```
+The default behavior is **refresh**: discover SCM targets and write `export-targets.json` for use with `snyk-api-import`.
 
-### Scan a single organization
+**Examples:**
 
-```bash
-./snyk-target-export --orgId=<your-org-id>
-```
+| What you want | Command |
+|---------------|--------|
+| Export all orgs in a group | `./snyk-target-export --groupId=<your-group-id>` |
+| Export a single org only | `./snyk-target-export --orgId=<your-org-id>` |
+| Only GitHub Cloud App targets | `./snyk-target-export --groupId=<your-group-id> --integrationType=github-cloud-app` |
+| Custom output file | `./snyk-target-export --groupId=<your-group-id> --output=/path/to/targets.json` |
+| More parallel orgs (default 5) | `./snyk-target-export --groupId=<your-group-id> --concurrency=10` |
 
-### Filter to a specific integration type
-
-Only include targets from a particular SCM integration:
-
-```bash
-./snyk-target-export --groupId=<your-group-id> --integrationType=github-cloud-app
-```
-
-### Control concurrency
-
-Adjust how many organizations are processed in parallel (default: 5):
-
-```bash
-./snyk-target-export --groupId=<your-group-id> --concurrency=10
-```
-
-### Write output to a custom location
-
-```bash
-./snyk-target-export --groupId=<your-group-id> --output=/path/to/targets.json
-```
-
-### Check the version
-
-```bash
-./snyk-target-export --version
-```
-
-## Options
+### Refresh options
 
 | Flag | Required | Default | Description |
 |------|----------|---------|-------------|
@@ -103,7 +86,7 @@ Adjust how many organizations are processed in parallel (default: 5):
 | `--integrationType` | No | all types | Filter to a specific integration type (e.g. `github-cloud-app`). |
 | `--concurrency` | No | `5` | Number of organizations to process in parallel. |
 | `--output` | No | `export-targets.json` | Output file path. |
-| `--version` | No | | Print version information and exit. |
+| `--version` | No | | Print version and exit. |
 
 ## Environment Variables
 
@@ -161,34 +144,58 @@ Custom branch configurations are preserved. If a project in Snyk monitors a non-
 
 When a project has no custom branch set, the import will use the repository's default branch.
 
-## Dedup: Remove Duplicate Projects
+## Dedup command: find and remove duplicate projects
 
-If a re-import creates duplicate projects (or duplicate targets from different integrations), `snyk-target-export dedup` can find and remove them. By default it runs in dry-run mode (lists duplicates without deleting). Pass `--delete` to actually remove them.
+If a re-import creates duplicate projects (or duplicate targets from different integrations), use the **dedup** subcommand to find and optionally remove them. By default it runs in **dry-run** mode (lists duplicates without deleting). Add `--delete` to actually remove them.
 
-The dedup command performs two phases of cleanup:
+**Examples:**
 
-1. **Duplicate projects** -- for each set of projects with the same name, the oldest is kept and newer copies are deleted.
-2. **Orphaned targets** -- after project deletion, targets (repo-level entries) that are left empty are automatically detected and removed. This uses the Snyk Targets API with `exclude_empty=false` to find targets that no longer have any projects.
+| What you want | Command |
+|---------------|--------|
+| List duplicates (dry-run) for a group | `./snyk-target-export dedup --groupId=<your-group-id>` |
+| List duplicates for a single org | `./snyk-target-export dedup --orgId=<your-org-id>` |
+| Actually delete duplicates | `./snyk-target-export dedup --groupId=<your-group-id> --delete` |
+| Only treat same name + same origin as dupes (keep GitHub and GitLab copies) | `./snyk-target-export dedup --groupId=<your-group-id> --considerOrigin` |
+| Dedup across orgs (group-wide; one keep per name in whole group) | `./snyk-target-export dedup --groupId=<your-group-id> --withinOrg=false` |
+| Debug: print detailed project info | `./snyk-target-export dedup --groupId=<your-group-id> --debug` |
 
-### Find duplicates (dry-run)
+The dedup command does two things:
+
+1. **Duplicate projects** — For each set of projects that count as duplicates (see options below), the oldest is kept and newer copies are deleted.
+2. **Orphaned targets** — After project deletion, targets (repo-level entries) with no remaining projects are detected and removed.
+
+**Scope and origin:**
+
+- By default, duplicates are only considered **within the same org**. Use `--withinOrg=false` for **group-wide** dedup (same name in any org = one set; single oldest kept).
+- By default, projects are grouped by **name only** (same repo from GitHub and GitLab = duplicates). Use `--considerOrigin` to only treat as duplicates when **name and integration origin** both match (e.g. keep both GitHub and GitLab copies of the same repo).
+
+**Advanced: keep same repo from different integrations (e.g. GitHub and GitLab)**
 
 ```bash
-./snyk-target-export dedup --groupId=<your-group-id>
+# Dry-run: see what would be removed (one keep per integration)
+./snyk-target-export dedup --groupId=<your-group-id> --considerOrigin
+
+# Actually remove duplicates
+./snyk-target-export dedup --groupId=<your-group-id> --considerOrigin --delete
 ```
 
-### Find duplicates in a single org
+**Advanced: dedup across orgs (group-wide)**
 
 ```bash
-./snyk-target-export dedup --orgId=<your-org-id>
+# Dry-run: see duplicates across all orgs
+./snyk-target-export dedup --groupId=<your-group-id> --withinOrg=false
+
+# Remove duplicates group-wide (one keep per name in the whole group)
+./snyk-target-export dedup --groupId=<your-group-id> --withinOrg=false --delete
 ```
 
-### Delete duplicates
+**Advanced: group-wide + same origin only**
 
 ```bash
-./snyk-target-export dedup --groupId=<your-group-id> --delete
+./snyk-target-export dedup --groupId=<your-group-id> --withinOrg=false --considerOrigin --delete
 ```
 
-### Dedup Options
+### Dedup options
 
 | Flag | Required | Default | Description |
 |------|----------|---------|-------------|
@@ -196,6 +203,8 @@ The dedup command performs two phases of cleanup:
 | `--orgId` | One of groupId or orgId | | Single Snyk org ID to scan. |
 | `--concurrency` | No | `5` | Number of organizations to process in parallel. |
 | `--delete` | No | `false` | Actually delete duplicates. Without this flag, only a report is printed. |
+| `--considerOrigin` | No | `false` | Only treat as duplicates when project name and integration origin match (e.g. keep same repo from both GitHub and GitLab). |
+| `--withinOrg` | No | `true` | Only treat as duplicates within the same org. Set to `false` for group-wide dedup (same name across orgs = one duplicate set). |
 | `--debug` | No | `false` | Print detailed project and target info for troubleshooting. |
 
 ### Example output (dry-run)
@@ -214,20 +223,11 @@ Summary: 3 duplicate project(s) across 2 org(s).
 Run with --delete to remove them.
 ```
 
-## Example: Adding SCA to Existing Snyk Code Projects
+## Development / Testing
 
-```bash
-export SNYK_TOKEN=<your-snyk-api-token>
+Run the test suite with `make test` or `go test ./...`. Run from the repository root so that optional testdata is found.
 
-# Step 1: Discover all existing targets
-./snyk-target-export --groupId=<your-group-id>
-
-# Step 2: Review the file
-# (check export-targets.json to confirm targets look correct)
-
-# Step 3: Re-import to trigger SCA scanning
-snyk-api-import import --file=export-targets.json
-```
+Unit tests can use mock API responses under `testdata/` (e.g. `mock_orgs_response.json`, `mock_targets_response.json`). If these files are missing, the tests that depend on them are skipped—no testdata is required for CI. The mock files use **sanitized data only** (fake UUIDs, placeholder org/repo names like `example-org/repo-a`); they do not contain real Snyk orgs, tokens, or repository URLs.
 
 ## Releasing
 
